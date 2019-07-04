@@ -48,7 +48,11 @@ app.get('/api/products', async(req, res) =>{
     res.send({products});
 });
 
-app
+app.get('/api/products/:product_id', (req, res) => {
+    const {product_id} = req.params;
+// SELECT * FROM products AS p JOIN images AS im ON p.imageId=im.id JOIN images AS ti ON p.thumbnailId=ti.id WHERE p.pid="6f33d1ac-3750-4888-94b5-d4c5b520fc32"
+    res.send({product_id})
+});
 
 
 app.post('/auth/create-account', async (req, res) => {
