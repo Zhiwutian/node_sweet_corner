@@ -2,7 +2,7 @@ const express = require('express');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcrypt');
 const { dbConfig } = require('./config');
-const PORT = process.env.PORT || 9000;
+const PORT = process.env.PORT || 3001;
 
 const app = express();
 
@@ -13,7 +13,7 @@ const db = mysql.createPool(dbConfig);
 
 /* User Model
 {
-    name: '', 
+    name: '',
     email: '',
     id: '',
     password: '',
@@ -22,8 +22,12 @@ const db = mysql.createPool(dbConfig);
 }
 */
 
-app.post('/auth/sign-up', async (req, res) => {
-    const { email, name, password } = req.body;
+app.post('/auth/create-account', async (req, res) => {
+    const { email, password, firstName, lastName } = req.body;
+
+
+
+
 
     const errors = [];
 
@@ -31,8 +35,12 @@ app.post('/auth/sign-up', async (req, res) => {
         errors.push('No email provided');
     }
 
-    if(!name){
-        errors.push('No name provided');
+    if(!firstName){
+        errors.push('No first name provided');
+    }
+
+    if(!lastName){
+        errors.push('No last name provided');
     }
 
     if(!password){
@@ -60,39 +68,71 @@ app.post('/auth/sign-up', async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    const [[role = null]] = await db.query('SELECT id FROM userRoles WHERE mid="customer"');
+
+    if(!role) {
+        return res.status(500).send({
+            error: 'Internal Server Error'
+        });
+    }
+
     const [result] = await db.execute(
-        'INSERT INTO users (name, email, password, created_at, updated_at) VALUES (?, ?, ?, CURRENT_TIME, CURRENT_TIME)',
-        [name, email, hashedPassword]
+        `INSERT INTO users (firstName, lastName, email, password, pid, roleId, lastAccessedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, UUID(), ?, CURRENT_TIME, CURRENT_TIME, CURRENT_TIME)`,
+        [firstName, lastName, email, hashedPassword, role.id]
     );
+
+    const [[user]] = await db.query(`SELECT CONCAT(firstName, " ", lastName) AS name, email, pid FROM users where id=${result.insertId}`);
+
 
     res.send({
         message: 'Account successfully created',
-        user: {
-            name,
-            userId: result.insertId
-        }
+        user
     });
 });
 
-app.post('/sign-in', async (req, res) => {
-    // check we received an email and password
+app.post('/auth/sign-in', async (req, res) => {
+    const {email, password} = req.body;
 
-    // no email and or password 422
+    const errors = [];
 
-    // Query DB for user with matching email
-    // No email found in DB 401
 
-    // use bcrypt to compare passwords
-    // Passwords don't match 401
+    if(!email) {
+        errors.push('No email received');
+    }
 
-    // if everything matches send back
-    // {
-    //     message: 'Sign in success',
-    //         user: {
-    //         name: 'Sarah Conner',
-    //         userId: 9
-    //     }
-    // }
+    if(!password) {
+        errors.push('No password received');
+    }
+
+    if (errors.length){
+        return res.status(422).send({errors});
+    }
+
+
+    const [[foundUser = null]] = await db.execute(
+        'SELECT CONCAT(firstName, " ", lastName) AS name, email, pid, password as hash FROM users WHERE email=?',
+        [email]
+    );
+
+
+    if(!foundUser) {
+        return res.status(401).send('Unauthorized');
+    }
+    const {hash, ...user} = foundUser
+
+
+    const passwordsMatch = await bcrypt.compare(password, hash)
+
+    if(!passwordsMatch) {
+        return res.status(401).send('Unauthorized');
+    }
+
+
+    res.send({
+        message: 'Sign In success',
+        user
+    });
+
 });
 
 app.listen(PORT, () => {
