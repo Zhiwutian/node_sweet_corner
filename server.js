@@ -23,11 +23,13 @@ const db = mysql.createPool(dbConfig);
 */
 
 // SELECT p.pid AS id, p.caption, p.cost, p.name, i.pid AS thumb_id, i.altText, i.file, i.type FROM products AS p JOIN images AS i ON p.thumbnailId=i.id
+function imageUrl(req,type,file) {
+    return `${req.protocol}://${req.get('host')}/images/${type}/${file}`;
+}
+
 app.get('/api/products', async(req, res) =>{
-    const {protocol} = req;
     const [result] = await db.query('SELECT p.pid AS id, p.caption, p.cost, p.name, i.pid AS thumb_id, i.altText, i.file, i.type FROM products AS p JOIN images AS i ON p.thumbnailId=i.id')
 
-    const urlBase = `${protocol}://${req.get('host')}/images`;
 
 
     const products = result.map((product) => {
@@ -41,17 +43,55 @@ app.get('/api/products', async(req, res) =>{
                 altText: product.altText,
                 file: product.file,
                 type: product.type,
-                url:`${urlBase}/${product.type}/${product.file}`
+                url:imageUrl(req, product.type, product.file)
             }
         }
     });
     res.send({products});
 });
 
-app.get('/api/products/:product_id', (req, res) => {
+app.get('/api/products/:product_id', async (req, res) => {
     const {product_id} = req.params;
-// SELECT * FROM products AS p JOIN images AS im ON p.imageId=im.id JOIN images AS ti ON p.thumbnailId=ti.id WHERE p.pid="6f33d1ac-3750-4888-94b5-d4c5b520fc32"
-    res.send({product_id})
+
+    if(!product_id) {
+        return res.status(422).send("Missing Product ID");
+
+    }
+    const [[product = null]] = await db.execute(
+        'SELECT p.pid AS productId, p.caption, p.cost, p.description, p.name, im.pid AS imageId, im.altText AS imageAltText, im.file AS imageFile, im.type AS imageType, tn.pid AS tnId, tn.altText AS tnAltText, tn.file AS tnFile, tn.type AS tnType FROM products AS p JOIN images AS im ON p.imageId=im.id JOIN images AS tn ON p.thumbnailId=tn.id WHERE p.pid=?',
+        [product_id]
+    );
+
+    if(!product){
+        return res.status(422).send("Invalid product ID");
+    }
+
+
+    console.log("Product", product);
+
+
+
+    res.send({
+        id:product.productID,
+        caption: product.caption,
+        cost: product.cost,
+        description: product.description,
+        name: product.name,
+        image: {
+            id: product.imageID,
+            altText:product.imageAltText,
+            file:product.imageFile,
+            type: product.imageType,
+            url: imageUrl(req, product.imageType, product.imageFile)
+        },
+        thumbnails: {
+            id: product.tnId,
+            altText: product.tnAltText,
+            file: product.tnFile,
+            type: product.tnType,
+            url: imageUrl(req, product.tnType, product.tnFile)
+        }
+    })
 });
 
 
