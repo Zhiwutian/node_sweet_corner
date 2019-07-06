@@ -22,190 +22,218 @@ const db = mysql.createPool(dbConfig);
 }
 */
 
-// SELECT p.pid AS id, p.caption, p.cost, p.name, i.pid AS thumb_id, i.altText, i.file, i.type FROM products AS p JOIN images AS i ON p.thumbnailId=i.id
 function imageUrl(req,type,file) {
     return `${req.protocol}://${req.get('host')}/images/${type}/${file}`;
 }
 
-app.get('/api/products', async(req, res) =>{
-    const [result] = await db.query('SELECT p.pid AS id, p.caption, p.cost, p.name, i.pid AS thumb_id, i.altText, i.file, i.type FROM products AS p JOIN images AS i ON p.thumbnailId=i.id')
+class StatusError extends Error {
+    constructor(status, messages, defaultMessage = "Internal Server Error"){
+        super(defaultMessage);
 
 
+        this.status = status;
 
-    const products = result.map((product) => {
-        return {
-            id: product.id,
+        if(!Array.isArray(messages)) {
+            messages = [messages]
+        }
+        this.messages = messages;
+    }
+}
+
+app.get('/api/products', async(req, res, next) =>{
+    try {
+        const [result] = await db.query('SELECT p.pid AS id, p.caption, p.cost, p.name, i.pid AS thumb_id, i.altText, i.file, i.type FROM products AS p JOIN images AS i ON p.thumbnailId=i.id')
+
+        const products = result.map((product) => {
+            return {
+                id: product.id,
+                caption: product.caption,
+                cost: product.cost,
+                name: product.name,
+                thumbnail: {
+                    id: product.thumb_id,
+                    altText: product.altText,
+                    file: product.file,
+                    type: product.type,
+                    url:imageUrl(req, product.type, product.file)
+                }
+            }
+        });
+        res.send({products});
+        } catch (error){
+            next(error);
+        }
+});
+
+app.get('/api/products/:product_id', async (req, res, next) => {
+
+    try{
+        const {product_id} = req.params;
+
+        if(!product_id) {
+           throw new StatusError(422, "Missing Product ID");
+
+        }
+        const [[product = null]] = await db.execute(
+            'SELECT p.pid AS productId, p.caption, p.cost, p.description, p.name, im.pid AS imageId, im.altText AS imageAltText, im.file AS imageFile, im.type AS imageType, tn.pid AS tnId, tn.altText AS tnAltText, tn.file AS tnFile, tn.type AS tnType FROM products AS p JOIN images AS im ON p.imageId=im.id JOIN images AS tn ON p.thumbnailId=tn.id WHERE p.pid=?',
+            [product_id]
+        );
+
+        if(!product){
+            throw new StatusError("Invalid product ID");
+        }
+
+        res.send({
+            id:product.productID,
             caption: product.caption,
             cost: product.cost,
+            description: product.description,
             name: product.name,
-            thumbnail: {
-                id: product.thumb_id,
-                altText: product.altText,
-                file: product.file,
-                type: product.type,
-                url:imageUrl(req, product.type, product.file)
+            image: {
+                id: product.imageID,
+                altText:product.imageAltText,
+                file:product.imageFile,
+                type: product.imageType,
+                url: imageUrl(req, product.imageType, product.imageFile)
+            },
+            thumbnails: {
+                id: product.tnId,
+                altText: product.tnAltText,
+                file: product.tnFile,
+                type: product.tnType,
+                url: imageUrl(req, product.tnType, product.tnFile)
             }
-        }
-    });
-    res.send({products});
-});
-
-app.get('/api/products/:product_id', async (req, res) => {
-    const {product_id} = req.params;
-
-    if(!product_id) {
-        return res.status(422).send("Missing Product ID");
-
+        })
+    } catch(error){
+        next(error);
     }
-    const [[product = null]] = await db.execute(
-        'SELECT p.pid AS productId, p.caption, p.cost, p.description, p.name, im.pid AS imageId, im.altText AS imageAltText, im.file AS imageFile, im.type AS imageType, tn.pid AS tnId, tn.altText AS tnAltText, tn.file AS tnFile, tn.type AS tnType FROM products AS p JOIN images AS im ON p.imageId=im.id JOIN images AS tn ON p.thumbnailId=tn.id WHERE p.pid=?',
-        [product_id]
-    );
-
-    if(!product){
-        return res.status(422).send("Invalid product ID");
-    }
-
-
-    console.log("Product", product);
-
-
-
-    res.send({
-        id:product.productID,
-        caption: product.caption,
-        cost: product.cost,
-        description: product.description,
-        name: product.name,
-        image: {
-            id: product.imageID,
-            altText:product.imageAltText,
-            file:product.imageFile,
-            type: product.imageType,
-            url: imageUrl(req, product.imageType, product.imageFile)
-        },
-        thumbnails: {
-            id: product.tnId,
-            altText: product.tnAltText,
-            file: product.tnFile,
-            type: product.tnType,
-            url: imageUrl(req, product.tnType, product.tnFile)
-        }
-    })
 });
 
 
-app.post('/auth/create-account', async (req, res) => {
+app.post('/auth/create-account', async (req, res, next) => {
     const { email, password, firstName, lastName } = req.body;
 
+    try{
+        const errors = [];
 
+        if(!email){
+            errors.push('No email provided');
+        }
 
+        if(!firstName){
+            errors.push('No first name provided');
+        }
 
+        if(!lastName){
+            errors.push('No last name provided');
+        }
 
-    const errors = [];
+        if(!password){
+            errors.push('No password provided');
+        } else if(password.length < 6){
+            errors.push('Password is too short');
+        }
 
-    if(!email){
-        errors.push('No email provided');
-    }
+        if(errors.length){
+          throw new StatusError(422, errors);
+        }
 
-    if(!firstName){
-        errors.push('No first name provided');
-    }
+        const [[existingUser = null]] = await db.execute(
+            'SELECT id FROM users WHERE email=?',
+            [email]
+        );
 
-    if(!lastName){
-        errors.push('No last name provided');
-    }
+        if(existingUser){
+            throw new StatusError(422, "Email already in use!");
+        }
 
-    if(!password){
-        errors.push('No password provided');
-    } else if(password.length < 6){
-        errors.push('Password is too short');
-    }
+        const salt = await bcrypt.genSalt(10);
 
-    if(errors.length){
-        return res.status(422).send({
-            errors: errors
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        const [[role = null]] = await db.query('SELECT id FROM userRoles WHERE mid="customer"');
+
+        if(!role) {
+           throw new StatusError(500, "Internal Server Error");
+        }
+
+        const [result] = await db.execute(
+            `INSERT INTO users (firstName, lastName, email, password, pid, roleId, lastAccessedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, UUID(), ?, CURRENT_TIME, CURRENT_TIME, CURRENT_TIME)`,
+            [firstName, lastName, email, hashedPassword, role.id]
+        );
+
+        const [[user]] = await db.query(`SELECT CONCAT(firstName, " ", lastName) AS name, email, pid FROM users where id=${result.insertId}`);
+
+        res.send({
+            message: 'Account successfully created',
+            user
         });
+    } catch(error){
+        next(error);
+
+
     }
 
-    const [[existingUser = null]] = await db.execute(
-        'SELECT id FROM users WHERE email=?',
-        [email]
-    );
 
-    if(existingUser){
-        return res.status(422).send({ error: 'Email already in use' });
-    }
-
-    const salt = await bcrypt.genSalt(10);
-
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    const [[role = null]] = await db.query('SELECT id FROM userRoles WHERE mid="customer"');
-
-    if(!role) {
-        return res.status(500).send({
-            error: 'Internal Server Error'
-        });
-    }
-
-    const [result] = await db.execute(
-        `INSERT INTO users (firstName, lastName, email, password, pid, roleId, lastAccessedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, UUID(), ?, CURRENT_TIME, CURRENT_TIME, CURRENT_TIME)`,
-        [firstName, lastName, email, hashedPassword, role.id]
-    );
-
-    const [[user]] = await db.query(`SELECT CONCAT(firstName, " ", lastName) AS name, email, pid FROM users where id=${result.insertId}`);
-
-
-    res.send({
-        message: 'Account successfully created',
-        user
-    });
 });
 
-app.post('/auth/sign-in', async (req, res) => {
-    const {email, password} = req.body;
+app.post('/auth/sign-in', async (req, res, next) => {
+    try {
+        const {email, password} = req.body;
 
-    const errors = [];
-
-
-    if(!email) {
-        errors.push('No email received');
-    }
-
-    if(!password) {
-        errors.push('No password received');
-    }
-
-    if (errors.length){
-        return res.status(422).send({errors});
-    }
+        const errors = [];
 
 
-    const [[foundUser = null]] = await db.execute(
-        'SELECT CONCAT(firstName, " ", lastName) AS name, email, pid, password as hash FROM users WHERE email=?',
-        [email]
-    );
+        if(!email) {
+            errors.push('No email received');
+        }
+
+        if(!password) {
+            errors.push('No password received');
+        }
+
+        if (errors.length){
+            throw new StatusError(422, errors);
+        }
 
 
-    if(!foundUser) {
-        return res.status(401).send('Unauthorized');
-    }
-    const {hash, ...user} = foundUser
+        const [[foundUser = null]] = await db.execute(
+            'SELECT CONCAT(firstName, " ", lastName) AS name, email, pid, password as hash FROM users WHERE email=?',
+            [email]
+        );
 
 
-    const passwordsMatch = await bcrypt.compare(password, hash)
+        if(!foundUser) {
+        throw new StatusError(401,"Invalid email and/or password");
+        }
+        const {hash, ...user} = foundUser
 
-    if(!passwordsMatch) {
-        return res.status(401).send('Unauthorized');
-    }
+
+        const passwordsMatch = await bcrypt.compare(password, hash)
+
+        if(!passwordsMatch) {
+            throw new StatusError(401,"Invalid email and/or password");
+        }
 
 
-    res.send({
-        message: 'Sign In success',
-        user
+        res.send({
+            message: 'Sign In success',
+            user
+        });
+
+        } catch(error){
+            next(error);
+        }
     });
 
+    app.use((error, req, res, next) => {
+
+        if(error instanceof StatusError) {
+            res.status(error.status).send({errors: error.messages})
+        } else {
+            console.log('Error: ', error);
+            res.status(500).send({errors:"Internal Server Error"});
+        }
 });
 
 app.listen(PORT, () => {
