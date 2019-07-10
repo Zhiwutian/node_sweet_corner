@@ -1,7 +1,9 @@
 const express = require('express');
-const bcrypt = require('bcrypt');
+const { StatusError } = require("./helpers/error_handlng");
 const PORT = process.env.PORT || 3001;
 
+global.__root = __dirname;
+global.StatusError = StatusError;
 const app = express();
 
 app.use(express.urlencoded({extended: false}));

@@ -1,4 +1,5 @@
 const router = require("express").Router();
+const {createAccount, signIn} = require("./controllers");
 
 
 /*
@@ -6,8 +7,8 @@ const router = require("express").Router();
     /auth Routes
 */
 
-
-router.get("/test", (req,res)=>{
-    res.send("Testing Auth Router auth/test");
-});
+// /auth/create-account
+router.post('/create-account', createAccount);
+// /auth/sign-in
+router.post('/sign-in', signIn);
 module.exports = router;
