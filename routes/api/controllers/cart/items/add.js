@@ -6,34 +6,71 @@ const { cartSecret } = require(__root + '/config').jwt;
 module.exports = async (req, res, next) => {
 
     try {
-        const { body: {quantity}, headers: {"x-cart-token": cartToken} ,params: {product_id}} = req;
+        const { params: {product_id}} = req;
+        let {quantity=1} = req.body
+        let {"x-cart-token": cartToken} = req.headers;
+        let cartData = null;
+
+        quantity = parseInt(quantity);
+
+        if(isNaN(quantity)){
+            throw new StatusError(422, 'Invalid quantity given, must be a number!');
+
+        }
+
+
+
+
+        if(!product_id) {
+            throw new StatusError(422, 'No product ID provided')
+        }
 
 
         if(cartToken) {
             // Retrieve cart data
+            cartData = jwt.decode(cartToken, cartSecret);
+
+
         } else {
             // Create a new cart
             const [[cartStatus = null]] = await db.query('SELECT id FROM cartStatuses WHERE mid ="active"');
 
-            console.log("Cart Status ", cartStatus);
 
             if(!cartStatus) {
                 throw new StatusError(500, "Unable to find cart status");
             }
 
-            const result = await db.query(`INSERT INTO carts (lastInteraction, pid, createdAt, updatedAt, statusId) VALUES (CURRENT_TIME, UUID(), CURRENT_TIME, CURRENT_TIME, ${cartStatus.id})`);
+            const [result] = await db.query(`INSERT INTO carts (lastInteraction, pid, createdAt, updatedAt, statusId) VALUES (CURRENT_TIME, UUID(), CURRENT_TIME, CURRENT_TIME, ${cartStatus.id})`);
 
-            console.log("REsult ", result);
+
+            cartData = {
+                cartId: result.insertId,
+                tokenCreatedAt: Date.now()
+            }
+            cartToken = jwt.encode(cartData, cartSecret);
+
+
         }
+
+
+        const [[product = null]] = await db.execute(
+            'SELECT id FROM products WHERE pid = ?',
+            [product_id]
+        );
+
+        if(!product) {
+            throw new StatusError(422, 'Invalid product ID');
+        }
+
+
 
 
 
         res.send({
             message: "Add Item to Cart",
-            product_id,
-            quantity,
             cartToken
-        } );
+
+        });
 
     }catch(error) {
         next(error);
