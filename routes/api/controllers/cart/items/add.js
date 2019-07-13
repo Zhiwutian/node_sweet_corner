@@ -18,18 +18,13 @@ module.exports = async (req, res, next) => {
 
         }
 
-
-
-
         if(!product_id) {
             throw new StatusError(422, 'No product ID provided')
         }
 
-
         if(cartToken) {
             // Retrieve cart data
             cartData = jwt.decode(cartToken, cartSecret);
-
 
         } else {
             // Create a new cart
@@ -52,9 +47,17 @@ module.exports = async (req, res, next) => {
 
         }
 
+        const [[cart = null]] = await db.query(
+            `SELECT * FROM carts WHERE id = ${cartData.cartId}`
+        )
+
+        if(!cart) {
+            throw new StatusError(422, "Invalid cart ID")
+        }
+
 
         const [[product = null]] = await db.execute(
-            'SELECT id FROM products WHERE pid = ?',
+            'SELECT id, name FROM products WHERE pid = ?',
             [product_id]
         );
 
@@ -62,13 +65,19 @@ module.exports = async (req, res, next) => {
             throw new StatusError(422, 'Invalid product ID');
         }
 
+        const [cartItem] = await db.execute(
+            `INSERT INTO cartItems (pid, quantity, createdAt, updatedAt, cartId, productId) VALUES (UUID(), ?, CURRENT_TIME, CURRENT_TIME, ?, ?)`, [quantity, cartData.cartId, product.id]
+        )
 
+        const [[total]] = await db.query(`SELECT SUM(ci.quantity) AS items, SUM(ci.quantity * p.cost) AS total FROM cartItems AS ci JOIN products AS p ON ci.productId= p.id WHERE cartId = ${cartData.cartId}`)
 
-
+        const message = `${quantity} ${product.name} cupcake${quantity > 1 ? 's' :''} added to cart`;
 
         res.send({
-            message: "Add Item to Cart",
-            cartToken
+            cartId: cart.pid,
+            cartToken,
+            message,
+            total
 
         });
 
