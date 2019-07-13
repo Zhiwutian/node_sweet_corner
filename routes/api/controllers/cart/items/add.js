@@ -48,7 +48,7 @@ module.exports = async (req, res, next) => {
         }
 
         const [[cart = null]] = await db.query(
-            `SELECT * FROM carts WHERE id = ${cartData.cartId}`
+            `SELECT * FROM carts WHERE id = ${cartData.cartId} AND deletedAt IS null`
         )
 
         if(!cart) {
@@ -57,7 +57,7 @@ module.exports = async (req, res, next) => {
 
 
         const [[product = null]] = await db.execute(
-            'SELECT id, name FROM products WHERE pid = ?',
+            'SELECT id, name FROM products WHERE pid = ? AND deletedAt IS null',
             [product_id]
         );
 
@@ -65,11 +65,34 @@ module.exports = async (req, res, next) => {
             throw new StatusError(422, 'Invalid product ID');
         }
 
-        const [cartItem] = await db.execute(
-            `INSERT INTO cartItems (pid, quantity, createdAt, updatedAt, cartId, productId) VALUES (UUID(), ?, CURRENT_TIME, CURRENT_TIME, ?, ?)`, [quantity, cartData.cartId, product.id]
-        )
+        const [[existingItem = null]] = await db.query(
+            `SELECT id, quantity FROM cartItems WHERE cartId=${cartData.cartId} AND productId=${product.id} AND deletedAt IS null`
+        );
 
-        const [[total]] = await db.query(`SELECT SUM(ci.quantity) AS items, SUM(ci.quantity * p.cost) AS total FROM cartItems AS ci JOIN products AS p ON ci.productId= p.id WHERE cartId = ${cartData.cartId}`)
+        if(existingItem){
+            let newQuantity = quantity + existingItem.quantity;
+
+            if(newQuantity <= 0 ) {
+                newQuantity = 0;
+            }
+
+            const [updatedItem] = await db.query(
+                `UPDATE cartItems SET quantity = ${newQuantity}, updatedAt=CURRENT_TIME ${newQuantity ? '' : ', deletedAt=CURRENT_TIME '} WHERE cartId=${cartData.cartId} and productId = ${product.id}`
+            );
+
+        } else {
+
+            if (quantity < 1) {
+                throw new StatusError(422, "Quantity must be greater than 0 for new items");
+            }
+
+            const [cartItem] = await db.execute(
+                `INSERT INTO cartItems (pid, quantity, createdAt, updatedAt, cartId, productId) VALUES (UUID(), ?, CURRENT_TIME, CURRENT_TIME, ?, ?)`, [quantity, cartData.cartId, product.id]
+            )
+
+        }
+
+        const [[total]] = await db.query(`SELECT SUM(ci.quantity) AS items, SUM(ci.quantity * p.cost) AS total FROM cartItems AS ci JOIN products AS p ON ci.productId= p.id WHERE cartId = ${cartData.cartId} AND ci.deletedAt IS null`)
 
         const message = `${quantity} ${product.name} cupcake${quantity > 1 ? 's' :''} added to cart`;
 
