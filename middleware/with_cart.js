@@ -11,7 +11,7 @@ module.exports = async (req, res, next) => {
        if (cartToken) {
             const cartData = jwt.decode(cartToken, cartSecret);
 
-            const [[cart = null]] = await db.query(
+            const [cart = null] = await db.query(
                 `SELECT * FROM carts AS c JOIN cartItems AS ci ON ci.cartId=c.id WHERE c.id=1 AND c.deletedAt IS NULL AND ci.deletedAt IS NULL`
             );
 
