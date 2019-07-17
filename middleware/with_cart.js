@@ -12,14 +12,48 @@ module.exports = async (req, res, next) => {
             const cartData = jwt.decode(cartToken, cartSecret);
 
             const [cart = null] = await db.query(
-                `SELECT * FROM carts AS c JOIN cartItems AS ci ON ci.cartId=c.id WHERE c.id=1 AND c.deletedAt IS NULL AND ci.deletedAt IS NULL`
+                `SELECT c.id AS cartId, c.lastInteraction, c.pid, c.createdAt,
+                c.updatedAt, c.userId, c.statusId AS cartStatusId,
+                ci.quantity, p.cost FROM carts AS c
+                JOIN cartItems AS ci ON ci.cartId=c.id
+                JOIN products AS p ON ci.productId=p.id
+                WHERE c.id=${cartData.cartId} AND c.deletedAt IS NULL AND ci.deletedAt IS NULL`
             );
 
             if(!cart) {
                 throw new StatusError (422, "Invalid Cart Token!");
             }
-            req.cart = cart;
 
+            const {cost, quantity, ...cartItem} = cart[0]
+
+            const formattedCart = {
+                ...cartItem,
+                items: cart.map(({cost,quantity}) =>({cost, quantity}))
+            };
+
+            // const formattedCart = {
+            //     ...cartItem,
+            //     items: cart.map((item) => {
+            //         return {
+            //             cost: item.cost,
+            //             quantity: item.quantity
+            //         }
+            //     })
+            // }
+            // cart.forEach(item => {
+                // formattedCart.id = item.id;
+                // formattedCart.lastInteraction = item.lastInteraction;
+                // formattedCart.pid = item.pid;
+                // formattedCart.createdAt = item.createdAt;
+                // formattedCart.userId = item.userId;
+                // formattedCart.cartStatudId = item.cartStatusId;
+
+                // formattedCart.items.push({
+                //     cost: item.cost,
+                //     quantity: item.quantity
+                // });
+            // });
+            req.cart = formattedCart;
        }
 
         next();
