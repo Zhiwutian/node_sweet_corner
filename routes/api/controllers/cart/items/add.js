@@ -6,7 +6,9 @@ const { cartSecret } = require(__root + '/config').jwt;
 module.exports = async (req, res, next) => {
 
     try {
+
         const { params: {product_id}} = req;
+        let{ cart } = req;
         let {quantity=1} = req.body
         let {"x-cart-token": cartToken} = req.headers;
         let cartData = null;
@@ -22,14 +24,9 @@ module.exports = async (req, res, next) => {
             throw new StatusError(422, 'No product ID provided')
         }
 
-        if(cartToken) {
-            // Retrieve cart data
-            cartData = jwt.decode(cartToken, cartSecret);
-
-        } else {
-            // Create a new cart
-            const [[cartStatus = null]] = await db.query('SELECT id FROM cartStatuses WHERE mid ="active"');
-
+        if(!cart) {
+        // Create a new cart
+        const [[cartStatus = null]] = await db.query('SELECT id FROM cartStatuses WHERE mid ="active"');
 
             if(!cartStatus) {
                 throw new StatusError(500, "Unable to find cart status");
@@ -44,17 +41,22 @@ module.exports = async (req, res, next) => {
             }
             cartToken = jwt.encode(cartData, cartSecret);
 
+            const [[newCart = null]] = await db.query(
+                `SELECT * FROM carts WHERE id = ${cartData.cartId} AND deletedAt IS null`
+            )
 
+            if(!newCart) {
+                throw new StatusError(500, "Problem retrieving cart data")
+            }
+
+            cart = newCart;
+            cart.items = null;
+
+        } else {
+            cartData = {
+                cartId: cart.cartId
+            }
         }
-
-        const [[cart = null]] = await db.query(
-            `SELECT * FROM carts WHERE id = ${cartData.cartId} AND deletedAt IS null`
-        )
-
-        if(!cart) {
-            throw new StatusError(422, "Invalid cart ID")
-        }
-
 
         const [[product = null]] = await db.execute(
             'SELECT id, name FROM products WHERE pid = ? AND deletedAt IS null',
@@ -65,9 +67,12 @@ module.exports = async (req, res, next) => {
             throw new StatusError(422, 'Invalid product ID');
         }
 
-        const [[existingItem = null]] = await db.query(
-            `SELECT id, quantity FROM cartItems WHERE cartId=${cartData.cartId} AND productId=${product.id} AND deletedAt IS null`
-        );
+
+        let existingItem = null;
+        if(cart.items) {
+            existingItem = cart.items.find(item => item.productId === product.id)|| null;
+        }
+
 
         if(existingItem){
             let newQuantity = quantity + existingItem.quantity;
@@ -76,7 +81,7 @@ module.exports = async (req, res, next) => {
                 newQuantity = 0;
             }
 
-            const [updatedItem] = await db.query(
+            await db.query(
                 `UPDATE cartItems SET quantity = ${newQuantity}, updatedAt=CURRENT_TIME ${newQuantity ? '' : ', deletedAt=CURRENT_TIME '} WHERE cartId=${cartData.cartId} and productId = ${product.id}`
             );
 
@@ -86,7 +91,7 @@ module.exports = async (req, res, next) => {
                 throw new StatusError(422, "Quantity must be greater than 0 for new items");
             }
 
-            const [cartItem] = await db.execute(
+            await db.execute(
                 `INSERT INTO cartItems (pid, quantity, createdAt, updatedAt, cartId, productId) VALUES (UUID(), ?, CURRENT_TIME, CURRENT_TIME, ?, ?)`, [quantity, cartData.cartId, product.id]
             )
 
