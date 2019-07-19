@@ -14,7 +14,7 @@ module.exports = async (req, res, next) => {
             const [cart = null] = await db.query(
                 `SELECT c.id AS cartId, c.lastInteraction, c.pid, c.createdAt,
                 c.updatedAt, c.userId, c.statusId AS cartStatusId,
-                ci.quantity, p.cost FROM carts AS c
+                ci.quantity, p.cost, p.id AS productId FROM carts AS c
                 JOIN cartItems AS ci ON ci.cartId=c.id
                 JOIN products AS p ON ci.productId=p.id
                 WHERE c.id=${cartData.cartId} AND c.deletedAt IS NULL AND ci.deletedAt IS NULL`
@@ -24,11 +24,11 @@ module.exports = async (req, res, next) => {
                 throw new StatusError (422, "Invalid Cart Token!");
             }
 
-            const {cost, quantity, ...cartItem} = cart[0]
+            const {cost, quantity, productId, ...cartItem} = cart[0]
 
             const formattedCart = {
                 ...cartItem,
-                items: cart.map(({cost,quantity}) =>({cost, quantity}))
+                items: cart.map(({cost,quantity, productId}) =>({cost, quantity, productId}))
             };
 
             // const formattedCart = {
