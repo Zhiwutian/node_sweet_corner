@@ -9,7 +9,7 @@ module.exports = async (req, res, next) => {
         //add userId to cart
 
         //else if no cart, go to next thing
-        if(req.cart.userId) {
+        if(req.cart && req.cart.userId) {
             if(req.cart.userId !== req.user.id) {
                 throw new StatusError(401, "Illegal Cart token");
             }
@@ -21,12 +21,12 @@ module.exports = async (req, res, next) => {
                 `SELECT id from cartStatuses WHERE mid = "active"`
             );
 
-        if(cartStatus.id === req.cart.cartStatusId) {
+            if(cartStatus.id === req.cart.cartStatusId) {
 
-            const [updateResult] = await db.query(
-                `UPDATE carts SET userId=${req.user.id} WHERE id=${req.cart.cartId}`
-            );
-        }
+                const [updateResult] = await db.query(
+                    `UPDATE carts SET userId=${req.user.id} WHERE id=${req.cart.cartId}`
+                );
+            }
 
         }
         next();

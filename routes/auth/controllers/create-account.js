@@ -1,13 +1,13 @@
-const bcrypt = require('bcrypt');
-const db = require(__root +"/db");
 
 module.exports =  async (req, res, next) => {
     const { email, password, firstName, lastName } = req.body;
 
+    const {id, token, ...user} = req.user;
+
     try{
         res.send({
-            message: "Testing create account",
-            user: req.user
+            token: token,
+            user:user
         })
 
     } catch(error){
