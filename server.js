@@ -1,11 +1,13 @@
 const express = require('express');
 const { StatusError } = require("./helpers/error_handlng");
+const cors = require('cors');
 const PORT = process.env.PORT || 3001;
 
 global.__root = __dirname;
 global.StatusError = StatusError;
 const app = express();
 
+app.use(cors());
 app.use(express.urlencoded({extended: false}));
 app.use(express.json());
 

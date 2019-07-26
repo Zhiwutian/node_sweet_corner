@@ -21,7 +21,7 @@ module.exports = async (req, res, next) => {
         }
 
         res.send({
-            id:product.productID,
+            id:product.productId,
             caption: product.caption,
             cost: product.cost,
             description: product.description,
