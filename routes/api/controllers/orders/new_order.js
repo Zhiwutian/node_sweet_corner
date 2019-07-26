@@ -8,6 +8,14 @@ module.exports = async (req, res, next) => {
             throw new StatusError(422, "No Active cart!!!")
         }
 
+        const [[closedCartStatus = null]] = await db.query(
+            `SELECT id FROM cartStatuses WHERE mid="closed"`
+        )
+
+        if(!closedCartStatus) {
+            throw new StatusError(500, "Error finding cart status");
+        }
+
         const [[orderStatus = null]] = await db.query(
             `SELECT id FROM orderStatuses WHERE mid='pending'`
         );
@@ -47,14 +55,15 @@ module.exports = async (req, res, next) => {
         });
 
 
-        console.log("Query Values Result:", itemsQueryValues);
 
         const [ orderItems ] = await db.query(
             `INSERT INTO orderItems (pid, \`each\`, quantity, createdAt, updatedAt, orderId, productId)
             VALUES ${itemsQueryValues}`
         );
 
-        console.log(orderItems);
+        await db.query(
+            `UPDATE carts SET statusId=${closedCartStatus.id} WHERE id=${req.cart.cartId}`
+        )
 
         // Create order in order table
 
@@ -63,10 +72,8 @@ module.exports = async (req, res, next) => {
         // Update cart status to closed
 
         res.send({
-            message: "Create new order",
-            cart: req.cart,
-            totalItems,
-            totalCost
+            message: "Order has been placed",
+            id: orderId
         });
 
     } catch(error) {
