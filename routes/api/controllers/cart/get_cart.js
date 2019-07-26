@@ -46,7 +46,6 @@ module.exports = async (req, res, next) => {
                 total: total
             }
 
-            // console.log("Cart Items ", cartItems);
         }
 
         res.send({
