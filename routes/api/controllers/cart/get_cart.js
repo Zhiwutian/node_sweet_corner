@@ -49,8 +49,7 @@ module.exports = async (req, res, next) => {
         }
 
         res.send({
-            message: "Get cart endpoint",
-            cart: cartDataToSend
+            ...cartDataToSend
         });
     } catch(error){
         next(error);
